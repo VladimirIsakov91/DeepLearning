@@ -61,6 +61,3 @@ class Network():
 net = Network({'build': [
 {'name': 'conv', 'n_kernels': 32, 'kernel_size': (3, 3), 'strides': (1, 1), 'padding': 'same', 'activation': 'relu'},
 {'name': 'dense', 'input_dim': 1024, 'n_units': 100, 'activation': 'relu'}]})
-
-print(net.get_config())
-quit
