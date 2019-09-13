@@ -1,4 +1,4 @@
-from DL.Parser import Parser
+from Parser import Parser
 
 
 class Runner:

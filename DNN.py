@@ -8,7 +8,7 @@ class DNN(ABC):
         pass
 
     @abstractmethod
-    def _get_data():
+    def _get_data(self):
         pass
 
     @abstractmethod

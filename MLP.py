@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras.layers as tkl
 import numpy as np
-from DL.DNN import DNN
+from DNN import DNN
 
 
 class MLP(DNN):
