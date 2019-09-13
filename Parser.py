@@ -1,6 +1,6 @@
 import argparse
 import os
-import tensorflow
+
 
 class Parser:
 
