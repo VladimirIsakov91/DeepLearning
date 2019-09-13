@@ -47,9 +47,14 @@ class Network():
             inp = layer(inp)
         return inp
 
+    def _get_loss(self):
+        pass
+
     def train(self):
 
         run = self._config['run']
+
+
 
     def predict(self):
         pass

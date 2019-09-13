@@ -11,7 +11,7 @@ class Runner:
 
         if model == 'MLP':
 
-            from AWS_dnn.MLP import MLP
+            from MLP import MLP
             import tensorflow as tf
 
             if __name__ == '__main__':
