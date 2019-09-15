@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+import numpy as np
 
 class Network:
 
@@ -22,19 +22,30 @@ class Network:
                                                     padding=layer['padding'],
                                                     activation=layer['activation']))
             elif layer['name'] == 'pool':
-                model.append(tf.keras.layers.MaxPooling2D(layer['pool_size']))
+                model.append(tf.keras.layers.MaxPooling2D(layer['pool_size'],
+                                                          layer['stride'],
+                                                          layer['padding']))
+
+            elif layer['name'] == 'batch_normalization':
+                model.append(tf.keras.layers.BatchNormalization())
+
+            elif layer['name'] == 'dropout':
+                model.append(tf.keras.layers.Dropout(layer['rate']))
 
             elif layer['name'] == 'dense':
 
                 if dense is False:
+                    model.append(tf.keras.layers.Flatten())
                     model.append(tf.keras.layers.Dense(input_dim=layer['input_dim'],
                                                         units=layer['n_units'],
-                                                        activation=layer['activation']))
+                                                        activation=layer['activation'],
+                                                        kernel_regularizer=tf.keras.regularizers.l2(layer['regularizer'])))
                     dense = True
 
                 else:
                     model.append(tf.keras.layers.Dense(units=layer['n_units'],
-                                                        activation=layer['activation']))
+                                                        activation=layer['activation'],
+                                                        kernel_regularizer=tf.keras.regularizers.l2(layer['regularizer'])))
         return model
 
     def get_config(self):
@@ -44,6 +55,7 @@ class Network:
     def forward(self, inp):
         for layer in self._model:
             inp = layer(inp)
+            #print(inp.shape)
         return inp
 
     def _get_loss(self, run):
@@ -59,56 +71,42 @@ class Network:
 
         if run['train'] == 'adam':
             return tf.train.AdamOptimizer
-        elif run['loss'] == 'cross_entropy':
+        elif run['loss'] == 'gradient_descent':
             return tf.train.GradientDescentOptimizer
         else:
             raise NotImplementedError
 
-    def _get_placeholders(self, run):
-
-        height, width = run['image_size']
-        xp = tf.placeholder("float", [None, height, width])
-        yp = tf.placeholder("float", [None, 1])
-
-        return xp, yp
-
-    def train(self, x, y, session):
+    def _get_learning_rate(self, run, s):
+        if run['lr_decay'] == 'exp':
+            return tf.train.exponential_decay(run['learning_rate'],
+                                              s,
+                                              run['decay_steps'],
+                                              run['decay_rate'],
+                                              staircase=True)
+        else:
+            raise NotImplementedError
+    #@tf.function
+    def train(self, x, y, s):
 
         run = self._config['run']
-        xp, yp = self._get_placeholders(run)
-        out = self.forward(xp)
-        loss = self._get_loss(run)(yp, out)
-        optimizer = self._get_optim(run)(run['learning_rate'])
+        out = self.forward(x)
+        loss = self._get_loss(run)(y, out)
+        loss = tf.reduce_mean(loss)
+        learning_rate = self._get_learning_rate(run, s)
+        optimizer = self._get_optim(run)(learning_rate)
         train_op = optimizer.minimize(loss)
-
-        init = tf.global_variables_initializer()
-        session.run(init)
-
-        for epoch in range(run['epochs']):
-
-            avg_cost = 0.
-            n_batches = int(run['image_size'][0]/run['batch_size'])
-
-            for i in range(n_batches):
-
-                x_batch = features[n_batches*batch_size: n_batches*batch_size + batch_size, :]
-                y_batch = labels[n_batches*batch_size: n_batches*batch_size + batch_size, :]
-                summary, _, cost = session.run([merge, train_op, loss_op], feed_dict={xp: x_batch, yp: y_batch})
-                avg_cost += cost
-                summary_writer.add_summary(summary, epoch+1)
-            avg_cost /= n_batches
-
-            print('Epoch {0} Loss: {1}'.format(epoch+1, avg_cost))
+        return train_op, loss, optimizer
 
 
-
-    def predict(self):
-        pass
+    def predict(self, x, y):
+        out = self.forward(x)
+        out = tf.math.argmax(out, axis=1)
+        y = tf.math.argmax(y, axis=1)
+        compare = tf.where(tf.equal(out, y))
+        n_samples = tf.shape(y)[0]
+        n_correct = tf.shape(compare)[0]
+        accuracy = tf.math.divide(n_correct, n_samples)
+        return accuracy
 
     def save(self):
         pass
-
-
-net = Network({'build': [
-{'name': 'conv', 'n_kernels': 32, 'kernel_size': (3, 3), 'strides': (1, 1), 'padding': 'same', 'activation': 'relu'},
-{'name': 'dense', 'input_dim': 1024, 'n_units': 100, 'activation': 'relu'}]})

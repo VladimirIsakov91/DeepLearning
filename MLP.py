@@ -4,7 +4,7 @@ import numpy as np
 from DNN import DNN
 
 
-class MLP(DNN):
+class MLP:
 
     __slots__ = '_n_features', '_n_hidden', '_activation', '_model'
 
