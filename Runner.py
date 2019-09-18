@@ -28,7 +28,7 @@ class Runner:
             dnn = Network(config=config)
             #dnn.get_config()
             train_op, loss, optimizer = dnn.train(x=xp, y=yp, s=sp)
-            accuracy = dnn.predict(xp, yp)
+            accuracy = dnn.eval(xp, yp, )
 
             init = tf.global_variables_initializer()
 
@@ -94,6 +94,8 @@ class Runner:
                         logger.info('Epoch {0}: Loss: {1}, Accuracy{2}'.format(epoch + 1, avg_cost, total_accuracy))
                         print('Epoch {0}: Loss: {1}, Accuracy {2}, Learning Rate {3}'
                         .format(epoch + 1, avg_cost, total_accuracy, total_lr))
+
+                    tf.saved_model.save(dnn, './model')
                     print('END')
 
 
@@ -118,9 +120,9 @@ config = {'build': [
         'decay_steps': 5,
         'decay_rate': 0.5,
         'batch_size': 256,
-        'epochs': 20,
+        'epochs': 1,
         'n_classes': 2,
         'path': '/home/oem/PycharmProjects/CatsvsDogs/catsvsdogs.zarr',
-        'logs_path': './logs'}}
+        'save': './model'}}
 
-Runner.run(config=config)
+dnn = Runner.run(config=config)

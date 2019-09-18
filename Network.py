@@ -1,9 +1,10 @@
 import tensorflow as tf
 import numpy as np
 
-class Network:
+class Network(tf.keras.Model):
 
     def __init__(self, config: dict):
+        super(Network, self).__init__()
         self._config = config
         self._model = self._build_model()
 
@@ -53,9 +54,8 @@ class Network:
             print(value)
 
     def forward(self, inp):
-        for layer in self._model:
-            inp = layer(inp)
-            #print(inp.shape)
+        for i in range(len(self._model)):
+            inp = self._model[i](inp)
         return inp
 
     def _get_loss(self, run):
@@ -97,16 +97,17 @@ class Network:
         train_op = optimizer.minimize(loss)
         return train_op, loss, optimizer
 
+    @tf.function(input_signature=[tf.TensorSpec(shape=(None, 64, 64, 1), dtype=tf.float32),
+                                  tf.TensorSpec(shape=(None, 2), dtype=tf.float32)])
+    def eval(self, x, y):
 
-    def predict(self, x, y):
         out = self.forward(x)
-        out = tf.math.argmax(out, axis=1)
-        y = tf.math.argmax(y, axis=1)
-        compare = tf.where(tf.equal(out, y))
-        n_samples = tf.shape(y)[0]
-        n_correct = tf.shape(compare)[0]
-        accuracy = tf.math.divide(n_correct, n_samples)
+        #out = tf.math.argmax(out, axis=1)
+        #y = tf.math.argmax(y, axis=1)
+        #compare = tf.where(tf.equal(out, y))
+        #n_samples = tf.shape(y)[0]
+        #n_correct = tf.shape(compare)[0]
+        #accuracy = tf.math.divide(n_correct, n_samples)
+        accuracy = 1
         return accuracy
 
-    def save(self):
-        pass
