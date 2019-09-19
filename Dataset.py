@@ -5,6 +5,7 @@ import random
 import logging
 from collections import namedtuple
 logging.basicConfig(level=logging.INFO)
+from PIL import Image
 
 
 class Dataset(ABC):
@@ -14,12 +15,12 @@ class Dataset(ABC):
         self.data = self._build_data(index=index, labels=labels)
 
     def _build_data(self, index, labels) -> list:
-        Entry = namedtuple('entry', 'data_point labels')
-        data = [Entry(data_point, label) for data_point, label in zip(index, labels)]
+        Entry = namedtuple('entry', 'sample label')
+        data = [Entry(sample=sample, label=label) for sample, label in zip(index, labels)]
         return data
 
     @abstractmethod
-    def _split_data(self, data:list, splits:list) -> list:
+    def _build_splits(self, data:list, splits:dict) -> list:
         pass
 
     @abstractmethod
@@ -27,11 +28,7 @@ class Dataset(ABC):
         pass
 
     @abstractmethod
-    def _preprocess_batch(self, batch):
-        return batch
-
-    @abstractmethod
-    def _transform(self, batch):
+    def _preprocess(self, batch, key):
         return batch
 
     @abstractmethod
@@ -42,9 +39,9 @@ class Dataset(ABC):
     def _init_save(self, save_dir:str):
         pass
 
-    def preprocess(self, save_dir:str, splits:list, batch_size:int):
+    def preprocess(self, save_dir:str, splits:dict, batch_size:int):
 
-        data = self._split_data(data=self.data,
+        data = self._build_splits(data=self.data,
                                 splits=splits)
 
         saver = self._init_save(save_dir=save_dir)
@@ -52,7 +49,8 @@ class Dataset(ABC):
             batched_split = self._batch_split(split=split,
                                               batch_size=batch_size)
             for batch in batched_split:
-                batch = self._preprocess_batch(batch=batch)
+                batch = self._preprocess(batch=batch,
+                                         key=split.key)
 
 
 class ImageDataset(Dataset):
@@ -61,32 +59,42 @@ class ImageDataset(Dataset):
         self.logger = logging.getLogger('ImageDataset')
         super(ImageDataset, self).__init__(index=index, labels=labels)
 
-    def _split_data(self, data, splits):
+    def _build_splits(self, data, splits):
 
         self.logger.info('N splits {0}'.format(len(splits)))
 
         random.shuffle(data)
 
         split_index = []
+        values = list(splits.values())
         for i in range(len(splits)):
-            start_position = int(len(data)*sum(splits[:i]))
-            end_position = int(len(data)*sum(splits[:i+1]))
+            start_position = int(len(data)*sum(values[:i]))
+            end_position = int(len(data)*sum(values[:i+1]))
             split_index.append(data[start_position:end_position])
 
-        return split_index
+        Split = namedtuple('Split', 'data key')
+        splits = [Split(data=i, key=k) for i, k in zip(split_index, splits.keys())]
+
+        return splits
 
     def _batch_split(self, split, batch_size):
-        split_size = len(split)
+        split_size = len(split.data)
         n_batches = round(split_size/batch_size + 0.5)
-        batches = [split[i*batch_size:i*batch_size+batch_size] for i in range(n_batches)]
+        batches = [split.data[i*batch_size:i*batch_size+batch_size] for i in range(n_batches)]
         self.logger.info('Split size: {0} entries, N batches: {1}'.format(split_size, n_batches))
         return batches
 
-    def _preprocess_batch(self, batch):
-        batch = super(ImageDataset, self)._preprocess_batch(batch=batch)
-        return batch
+    def _preprocess(self, batch, key):
 
-    def _transform(self, batch):
+        for entry in batch:
+            sample = entry.sample
+            label = entry.label
+            image = Image.open('/home/oem/PycharmProjects/CatsvsDogs/train/' + sample)
+            image = image.convert('L')
+
+
+
+
         return batch
 
     def _save(self, samples, labels, saver):
@@ -96,10 +104,10 @@ class ImageDataset(Dataset):
         pass
 
 
-data = os.listdir('C:/Users/C61124/trainingSample/0')
+data = os.listdir('/home/oem/PycharmProjects/CatsvsDogs/train')
 labels = [1 for _ in range(len(data))]
 dataset = ImageDataset(index=data, labels=labels)
 print(dataset.preprocess(save_dir='bla',
-                         splits=[0.6, 0.2, 0.2],
-                         batch_size=8))
+                         splits={'train':0.6, 'validation:':0.2, 'test': 0.2},
+                         batch_size=256))
 
