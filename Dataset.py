@@ -1,113 +1,145 @@
-from abc import abstractmethod, ABC
-import numpy as np
 import os
 import random
-import logging
+from recordclass import recordclass
 from collections import namedtuple
-logging.basicConfig(level=logging.INFO)
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps, ImageChops
+import funcy
 
 
-class Dataset(ABC):
+class ImageDataset:
 
-    def __init__(self, index, labels):
+    def __init__(self, index, labels, batch_size, splits, shuffle):
 
-        self.data = self._build_data(index=index, labels=labels)
+        self.data = None
+        self.index = index
+        self.labels = labels
 
-    def _build_data(self, index, labels) -> list:
+        self.batch_size = batch_size
+        self.splits = splits
+
+        self.n_splits = len(self.splits)
+        self.n_entries = len(index)
+
+        self._prepare_data(shuffle=shuffle)
+
+    def __str__(self):
+
+        return 'ImageDataset\nN Samples: {0}\nN Splits: {1}\nBatch Size: {2}'\
+            .format(self.n_entries, self.n_splits, self.batch_size)
+
+    def _build_entries(self):
+
         Entry = namedtuple('entry', 'sample label')
-        data = [Entry(sample=sample, label=label) for sample, label in zip(index, labels)]
-        return data
+        self.data = [Entry(sample=sample, label=label) for sample, label in zip(self.index, self.labels)]
 
-    @abstractmethod
-    def _build_splits(self, data:list, splits:dict) -> list:
-        pass
+    def _build_splits(self, shuffle=False):
 
-    @abstractmethod
-    def _batch_split(self, split:list, batch_size:int) -> list:
-        pass
+        data = self.data
 
-    @abstractmethod
-    def _preprocess(self, batch, key):
-        return batch
+        sizes = (int(i*len(data)) for i in self.splits.values())
 
-    @abstractmethod
-    def _save(self, samples, labels, saver):
-        pass
+        if shuffle is True:
+            random.shuffle(data)
 
-    @abstractmethod
-    def _init_save(self, save_dir:str):
-        pass
+        split_index = ([next(iter(data)) for _ in range(size)] for size in sizes)
 
-    def preprocess(self, save_dir:str, splits:dict, batch_size:int):
+        Split = recordclass('Split', ['collection', 'key'])
+        splits = [Split(collection=i, key=k) for i, k in zip(split_index, self.splits.keys())]
 
-        data = self._build_splits(data=self.data,
-                                splits=splits)
+        self.data = splits
 
-        saver = self._init_save(save_dir=save_dir)
-        for split in data:
-            batched_split = self._batch_split(split=split,
-                                              batch_size=batch_size)
-            for batch in batched_split:
-                batch = self._preprocess(batch=batch,
-                                         key=split.key)
+    def _build_batches(self):
+
+        for split in self.data:
+            split.collection = funcy.chunks(self.batch_size, split.collection)
+
+    def _prepare_data(self, shuffle):
+
+        self._build_entries()
+        self._build_splits(shuffle=shuffle)
+        self._build_batches()
 
 
-class ImageDataset(Dataset):
+class ImageTransformer:
 
-    def __init__(self, index, labels):
-        self.logger = logging.getLogger('ImageDataset')
-        super(ImageDataset, self).__init__(index=index, labels=labels)
+    def __init__(self):
+        self._transformations = []
 
-    def _build_splits(self, data, splits):
+    @property
+    def transformations(self):
+        return self._transformations
 
-        self.logger.info('N splits {0}'.format(len(splits)))
+    @transformations.setter
+    def transformations(self, value):
+        raise NotImplementedError
 
-        random.shuffle(data)
+    def add_unsharp_masking(self, radius=2, scale=1):
 
-        split_index = []
-        values = list(splits.values())
-        for i in range(len(splits)):
-            start_position = int(len(data)*sum(values[:i]))
-            end_position = int(len(data)*sum(values[:i+1]))
-            split_index.append(data[start_position:end_position])
+        def gaussian_blur(img, rad=radius, sc=scale):
+            gauss_img = img.filter(ImageFilter.GaussianBlur(radius=rad))
+            return ImageChops.add(img, ImageChops.subtract(img, gauss_img, scale=sc))
 
-        Split = namedtuple('Split', 'data key')
-        splits = [Split(data=i, key=k) for i, k in zip(split_index, splits.keys())]
+        self._transformations.append(gaussian_blur)
 
-        return splits
+    def add_histogram_equalization(self):
+        self._transformations.append(ImageOps.equalize)
 
-    def _batch_split(self, split, batch_size):
-        split_size = len(split.data)
-        n_batches = round(split_size/batch_size + 0.5)
-        batches = [split.data[i*batch_size:i*batch_size+batch_size] for i in range(n_batches)]
-        self.logger.info('Split size: {0} entries, N batches: {1}'.format(split_size, n_batches))
-        return batches
+    def add_median_filter(self, size=3):
 
-    def _preprocess(self, batch, key):
+        def median_filter(img):
+            return img.filter(ImageFilter.MedianFilter(size=size))
 
-        for entry in batch:
+        self._transformations.append(median_filter)
+
+class Saver:
+    pass
+
+class DataHandler:
+
+    def __init__(self, transformer: ImageTransformer, dataset: ImageDataset, saver: Saver):
+
+        self.transformer = transformer
+        self.dataset = dataset
+        self.saver = saver
+
+    def transform(self):
+
+        for entry in self.dataset.data:
+
             sample = entry.sample
             label = entry.label
-            image = Image.open('/home/oem/PycharmProjects/CatsvsDogs/train/' + sample)
-            image = image.convert('L')
+            origin = Image.open(sample)
+
+            for transformation in self.transformer.transformations:
+                res = transformation(origin)
+                res.show()
 
 
 
+data = os.listdir('C:/Users/C61124/trainingSample/0')
 
-        return batch
-
-    def _save(self, samples, labels, saver):
-        pass
-
-    def _init_save(self, save_dir):
-        pass
-
-
-data = os.listdir('/home/oem/PycharmProjects/CatsvsDogs/train')
 labels = [1 for _ in range(len(data))]
-dataset = ImageDataset(index=data, labels=labels)
-print(dataset.preprocess(save_dir='bla',
-                         splits={'train':0.6, 'validation:':0.2, 'test': 0.2},
-                         batch_size=256))
+
+dataset = ImageDataset(index=data,
+                       labels=labels,
+                       batch_size=8,
+                       splits={'train': 0.6,
+                               'validation:': 0.2,
+                               'test': 0.2},
+                       shuffle=True)
+
+transformer = ImageTransformer()
+
+transformer.add_unsharp_masking()
+transformer.add_histogram_equalization()
+transformer.add_median_filter()
+
+saver = Saver()
+handler = DataHandler(dataset=dataset,
+                      transformer=transformer,
+                      saver=saver)
+
+#cat = Image.open('C:/Users/C61124/ComputerVision/cat.jpg')
+#handler.transform()
+
 
