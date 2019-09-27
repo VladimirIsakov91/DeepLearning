@@ -28,19 +28,10 @@ class DataHandler:
             for entry in split:
 
                 origin = self.transformer.sample2object(entry.sample)
+                transformed = self.transformer.transform(origin)
+                labels = self.transformer.expand_labels(entry.label)
 
-                transformed = []
-
-                for transformation in self.transformer:
-                    img = transformation.func(origin)
-                    if transformation.origin is True:
-                        origin = img
-                    else:
-                        transformed.append(img)
-
-                sample_batch.append(origin)
                 sample_batch.extend(transformed)
-                labels = numpy.array([entry.label for _ in range(len(sample_batch))])
                 label_batch.append(labels)
 
                 if len(sample_batch) >= split.batch_size:
@@ -48,7 +39,7 @@ class DataHandler:
                     batch = numpy.stack(sample_batch, axis=0)
                     batch = numpy.expand_dims(batch, -1)
                     label_batch = numpy.concatenate(label_batch)
-                    print(batch.shape, label_batch.shape)
+                    #print(batch.shape, label_batch.shape)
 
                     sample_batch = []
                     label_batch = []

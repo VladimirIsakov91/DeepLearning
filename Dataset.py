@@ -65,44 +65,65 @@ class ImageDataset(Dataset):
 
         super(ImageDataset, self).__init__()
 
-        self.data = None
-        self.source = source
-        self.index = (source + '/' + i for i in os.listdir(source))
-        self.labels = labels
-        self.splits = splits
+        self._data = None
+        self._source = source
+        self._labels = labels
+        self._split_spec = splits
 
-        self._split = Split
-        self._entry = Entry
-
-        self.n_splits = len(self.splits)
+        self._Split = Split
+        self._Entry = Entry
 
         self._prepare_data(shuffle=shuffle)
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def source(self):
+        return self._source
+
+    @property
+    def labels(self):
+        return self._labels
+
+    @property
+    def split_spec(self):
+        return self._split_spec
+
+    @property
+    def _index(self):
+        return (self._source + '/' + i for i in os.listdir(self._source))
+
+    @property
+    def n_splits(self):
+        return len(self._split_spec)
 
     def __str__(self):
 
         return
 
     def __iter__(self):
-        return iter(self.data)
+        return iter(self._data)
 
     def _build_entries(self):
 
-        self.data = [self._entry(sample=sample, label=label) for sample, label in zip(self.index, self.labels)]
+        self._data = [self._Entry(sample=sample, label=label) for sample, label in zip(self._index, self._labels)]
 
     def _build_splits(self, shuffle=False):
 
-        data = self.data
+        data = self._data
 
-        sizes = [int(i*len(data)) for i in self.splits.values()]
+        sizes = [int(i*len(data)) for i in self._split_spec.values()]
 
         if shuffle is True:
             random.shuffle(data)
 
         split_index = ([next(iter(data)) for _ in range(size)] for size in sizes)
 
-        splits = [self._split(collection=i, key=k) for i, k in zip(split_index, self.splits.keys())]
+        splits = [self._Split(collection=i, key=k) for i, k in zip(split_index, self._split_spec.keys())]
 
-        self.data = splits
+        self._data = splits
 
     def _prepare_data(self, shuffle):
 
