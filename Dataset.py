@@ -12,22 +12,25 @@ class Entry:
     def label(self):
         return self._label
 
+    @label.setter
+    def label(self, value):
+        self._label = value
+
     @property
     def sample(self):
         return self._sample
 
+    @sample.setter
+    def sample(self, value):
+        self._sample = value
 
-class Split:
+class Spec:
 
-    def __init__(self, collection, key, batch_size=8):
+    def __init__(self, key, amount, batch_size):
 
-        self._collection = collection
         self._key = key
+        self._amount = amount
         self._batch_size = batch_size
-
-    @property
-    def collection(self):
-        return self._collection
 
     @property
     def key(self):
@@ -38,6 +41,29 @@ class Split:
         return self._batch_size
 
     @property
+    def amount(self):
+        return self._amount
+
+    def __str__(self):
+        return 'Spec - Key: {0}, Amount: {1}, Batch Size: {2}'\
+            .format(self.key, self.amount, self.batch_size)
+
+class Split:
+
+    def __init__(self, collection, spec: Spec):
+
+        self._collection = collection
+        self._spec = spec
+
+    @property
+    def spec(self):
+        return self._spec
+
+    @property
+    def collection(self):
+        return self._collection
+
+    @property
     def n_classes(self):
         return len(self._collection[0].label)
 
@@ -46,12 +72,11 @@ class Split:
         return len(self._collection)
 
     def __str__(self):
-        return 'Split - Key: {0}, Size: {1}, N Classes {2}, Batch Size: {3}'\
-            .format(self._key, self.size, self.n_classes, self._batch_size)
+        return 'Split - Size: {0}, N Classes {1}'\
+            .format(self.size, self.n_classes)
 
     def __iter__(self):
         return iter(self.collection)
-
 
 class Dataset:
 
@@ -61,19 +86,25 @@ class Dataset:
 
 class ImageDataset(Dataset):
 
-    def __init__(self, source, labels, splits, shuffle):
+    def __init__(self, source, labels, split_spec, shuffle):
 
         super(ImageDataset, self).__init__()
+
+        self._Split = Split
+        self._Entry = Entry
+        self._Spec = Spec
 
         self._data = None
         self._source = source
         self._labels = labels
-        self._split_spec = splits
-
-        self._Split = Split
-        self._Entry = Entry
+        self._split_spec = split_spec
 
         self._prepare_data(shuffle=shuffle)
+
+    @property
+    def specs(self):
+        return [self._Spec(key=k, amount=v['amount'], batch_size=v['batch_size'])
+                for k, v in self._split_spec.items()]
 
     @property
     def data(self):
@@ -114,14 +145,15 @@ class ImageDataset(Dataset):
 
         data = self._data
 
-        sizes = [int(i*len(data)) for i in self._split_spec.values()]
+        sizes = [int(spec.amount*len(data)) for spec in self.specs]
 
         if shuffle is True:
             random.shuffle(data)
 
-        split_index = ([next(iter(data)) for _ in range(size)] for size in sizes)
+        data = iter(data)
+        split_index = ([next(data) for _ in range(size)] for size in sizes)
 
-        splits = [self._Split(collection=i, key=k) for i, k in zip(split_index, self._split_spec.keys())]
+        splits = [self._Split(collection=i, spec=spec) for i, spec in zip(split_index, self.specs)]
 
         self._data = splits
 
@@ -129,7 +161,3 @@ class ImageDataset(Dataset):
 
         self._build_entries()
         self._build_splits(shuffle=shuffle)
-
-
-
-

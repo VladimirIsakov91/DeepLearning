@@ -1,14 +1,20 @@
 from PIL import Image, ImageFilter, ImageOps, ImageChops, ImageEnhance
 from abc import abstractmethod, ABC
 import numpy
+from Dataset import Entry, Split
 
 
 class Transformation:
 
-    def __init__(self, func, name, origin):
+    def __init__(self, func, name, origin, keys):
         self._func = func
         self._name = name
         self._origin = origin
+        self._keys = keys
+
+    @property
+    def keys(self):
+        return self._keys
 
     @property
     def func(self):
@@ -31,6 +37,7 @@ class Transformer:
     def __init__(self):
         self._transformations = []
         self._Transformation = Transformation
+        self._Entry = Entry
 
     def __str__(self):
 
@@ -54,51 +61,57 @@ class Transformer:
     def n_transformations(self):
         return len(self._transformations)
 
-    @staticmethod
-    def sample2object(sample):
-        raise NotImplementedError
-
     def transform(self, origin):
         raise NotImplementedError
 
 
 class ImageTransformer(Transformer):
 
-    def __init__(self):
+    def __init__(self, image_size=None):
         super(ImageTransformer, self).__init__()
-        self._image_size = None
+        self._image_size = image_size
+        self._split_transformations = None
 
     @property
     def image_size(self):
         return self._image_size
 
     @staticmethod
-    def sample2object(sample):
+    def _sample2object(sample):
         return Image.open(sample)
 
     @staticmethod
-    def img2aray(img):
+    def _img2aray(img):
         return numpy.asarray(img, dtype=numpy.uint8)
 
-    def expand_labels(self, label):
-        return [label for _ in range(self.n_transformations)]
+    def _expand_labels(self, label, n_copies):
+        return numpy.array([label for _ in range(n_copies)])
 
-    def transform(self, origin):
+    def build_transformations(self, split: Split):
+
+        self._split_transformations = [transformation for transformation in self._transformations if split.spec.key in transformation.keys]
+
+    def transform(self, entry: Entry):
+
+        sample = self._sample2object(entry.sample)
 
         transformed = []
 
-        for transformation in self._transformations:
-            img = transformation.apply(origin)
+        for transformation in self._split_transformations:
+            img = transformation.apply(sample)
             if transformation.origin is True:
-                origin = img
+                sample = img
             else:
                 transformed.append(img)
 
-        transformed.append(origin)
+        transformed.append(sample)
+        labels = self._expand_labels(entry.label, len(transformed))
 
-        return transformed
+        entries = [Entry(sample=self._img2aray(img), label=label) for img, label in zip(transformed, labels)]
 
-    def add_unsharp_masking(self, radius=2, scale=1, origin=False):
+        return entries
+
+    def add_unsharp_masking(self, keys, radius=2, scale=1, origin=False):
 
         name ='unsharp_masking'
 
@@ -106,52 +119,49 @@ class ImageTransformer(Transformer):
             gauss_img = img.filter(ImageFilter.GaussianBlur(radius=rad))
             return ImageChops.add(img, ImageChops.subtract(img, gauss_img, scale=sc))
 
-        transformation = self._Transformation(unsharp_masking, name, origin)
+        transformation = self._Transformation(unsharp_masking, name, origin, keys)
         self._transformations.append(transformation)
 
-    def add_histogram_equalization(self, origin=False):
+    def add_histogram_equalization(self, keys, origin=False):
 
         name = 'histogram_equalization'
 
-        transformation = self._Transformation(ImageOps.equalize, name, origin)
+        transformation = self._Transformation(ImageOps.equalize, name, origin, keys)
         self._transformations.append(transformation)
 
-    def add_median_filter(self, size=3, origin=False):
+    def add_median_filter(self, keys, size=3, origin=False):
 
         name = 'median_filter'
 
         def median_filter(img):
             return img.filter(ImageFilter.MedianFilter(size=size))
 
-        transformation = self._Transformation(median_filter, name, origin)
+        transformation = self._Transformation(median_filter, name, origin, keys)
         self._transformations.append(transformation)
 
-    def add_resize(self, size, origin=False):
+    def add_resize(self, size, keys, origin=False):
 
-        image_size = list(size)
-        image_size.append(1)
-
-        self._image_size = tuple(image_size)
+        self._image_size = size
 
         name = 'resize'
 
         def resize(img, s=size):
             return img.resize(s)
 
-        transformation = self._Transformation(resize, name, origin)
+        transformation = self._Transformation(resize, name, origin, keys)
         self._transformations.append(transformation)
 
-    def add_grayscale(self, origin=False):
+    def add_grayscale(self, keys, origin=False):
 
         name = 'grayscale'
 
         def grayscale(img):
             return img.convert('L')
 
-        transformation = self._Transformation(grayscale, name, origin)
+        transformation = self._Transformation(grayscale, name, origin, keys)
         self._transformations.append(transformation)
 
-    def add_rotation(self, angles, origin=False):
+    def add_rotation(self, angles, keys, origin=False):
 
         name = 'rotation'
 
@@ -160,10 +170,10 @@ class ImageTransformer(Transformer):
             def rotate(img, angl=angle):
                 return img.rotate(angl)
 
-            transformation = self._Transformation(rotate, name, origin)
+            transformation = self._Transformation(rotate, name, origin, keys)
             self._transformations.append(transformation)
 
-    def add_brightening(self, brightnesses, origin=False):
+    def add_brightening(self, brightnesses, keys, origin=False):
 
         name = 'brightening'
 
@@ -172,10 +182,10 @@ class ImageTransformer(Transformer):
             def brighten(img, br=brightness):
                 return ImageEnhance.Brightness(img).enhance(br)
 
-            transformation = self._Transformation(brighten, name, origin)
+            transformation = self._Transformation(brighten, name, origin, keys)
             self._transformations.append(transformation)
 
-    def add_contrast(self, contrasts, origin=False):
+    def add_contrast(self, contrasts, keys, origin=False):
 
         name = 'contrast'
 
@@ -184,10 +194,10 @@ class ImageTransformer(Transformer):
             def contrasting(img, con=contrast):
                 return ImageEnhance.Contrast(img).enhance(con)
 
-            transformation = self._Transformation(contrasting, name, origin)
+            transformation = self._Transformation(contrasting, name, origin, keys)
             self._transformations.append(transformation)
 
-    def add_sharpening(self, sharpenings, origin=False):
+    def add_sharpening(self, sharpenings, keys, origin=False):
 
         name = 'sharpen'
 
@@ -196,5 +206,5 @@ class ImageTransformer(Transformer):
             def sharpen(img, sh=sharpening):
                 return ImageEnhance.Contrast(img).enhance(sh)
 
-            transformation = self._Transformation(sharpen, name, origin)
+            transformation = self._Transformation(sharpen, name, origin, keys)
             self._transformations.append(transformation)

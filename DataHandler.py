@@ -1,7 +1,6 @@
 from Transformer import Transformer, ImageTransformer
 from Dataset import Dataset, ImageDataset
 from Saver import DataSaver
-import numpy
 
 
 class DataHandler:
@@ -12,35 +11,25 @@ class DataHandler:
         self.dataset = dataset
         self.saver = saver
 
-        #self.saver._init_dir()
 
-    def transform(self):
+    def run(self):
 
         for split in self.dataset:
 
             print(split)
-            #self.saver._init_split(split=split,
-            #                       transformer=self.transformer)
+            print(split.spec)
 
-            sample_batch = []
-            label_batch = []
+            batch = []
 
             for entry in split:
 
-                origin = self.transformer.sample2object(entry.sample)
-                transformed = self.transformer.transform(origin)
-                labels = self.transformer.expand_labels(entry.label)
+                self.transformer.build_transformations(split)
+                entries = self.transformer.transform(entry)
+                batch.extend(entries)
 
-                sample_batch.extend(transformed)
-                label_batch.append(labels)
+                if len(batch) >= split.spec.batch_size:
 
-                if len(sample_batch) >= split.batch_size:
-                    sample_batch = [self.transformer.img2aray(img) for img in sample_batch]
-                    batch = numpy.stack(sample_batch, axis=0)
-                    batch = numpy.expand_dims(batch, -1)
-                    label_batch = numpy.concatenate(label_batch)
-                    #print(batch.shape, label_batch.shape)
+                    self.saver.save_batch(batch=batch,
+                                          split=split)
 
-                    sample_batch = []
-                    label_batch = []
-
+                    batch = []
